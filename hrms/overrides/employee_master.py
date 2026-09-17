@@ -27,6 +27,33 @@ class EmployeeMaster(Employee):
 
 		self.employee = self.name
 
+	def after_insert(self):
+		email = self.prefered_email or self.company_email or self.personal_email or self.user_id
+		if not (self.create_user_automatically or email):
+			return
+
+		try:
+			from hrms.api.employee_provisioning import provision_employee_login
+
+			provision_employee_login(self.name, ignore_permissions=True)
+		except Exception:
+			frappe.logger("employee_provisioning").warning(
+				"Employee login provisioning failed for %s", self.name
+			)
+
+	def on_update(self):
+		super().on_update()
+		email = self.prefered_email or self.company_email or self.personal_email or self.user_id
+		if email and getattr(self, "firebase_provisioning_status", None) != "Provisioned":
+			try:
+				from hrms.api.employee_provisioning import provision_employee_login
+
+				provision_employee_login(self.name, ignore_permissions=True)
+			except Exception:
+				frappe.logger("employee_provisioning").warning(
+					"Employee login provisioning on update failed for %s", self.name
+				)
+
 
 def validate_onboarding_process(doc, method=None):
 	"""Validates Employee Creation for linked Employee Onboarding"""

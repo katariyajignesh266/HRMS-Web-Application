@@ -15,8 +15,21 @@ __pycache__/
 .vs
 node_modules
 *debug.log
+.env
+.backups/
+docker/.backups/
+backups/*
+!backups/seed/
+!backups/seed/**
+!docker/seed/**
 hrms/docs/current
 hrms/public/frontend
 hrms/www/hrms.html
 hrms/public/roster
 hrms/www/roster.html
+
+
+# Firebase Admin SDK credentials
+*-firebase-adminsdk-*.json
+*firebase*.json
+!docker/seed/**

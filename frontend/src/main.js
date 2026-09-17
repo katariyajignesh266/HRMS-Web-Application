@@ -96,6 +96,7 @@ const registerServiceWorker = async () => {
 }
 
 router.isReady().then(async () => {
+	await session.restore()
 	if (import.meta.env.DEV) {
 		await frappeRequest({
 			url: "/api/method/hrms.www.hrms.get_context_for_dev",

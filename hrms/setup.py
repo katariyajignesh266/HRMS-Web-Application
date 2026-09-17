@@ -109,6 +109,17 @@ def before_app_uninstall(app_name):
 def get_custom_fields():
 	"""HR specific custom fields that need to be added to the masters in ERPNext"""
 	return {
+		"User": [
+			{
+				"fieldname": "firebase_uid",
+				"fieldtype": "Data",
+				"label": _("Firebase UID"),
+				"insert_after": "email",
+				"no_copy": 1,
+				"unique": 1,
+				"allow_on_submit": 1,
+			},
+		],
 		"Company": [
 			{
 				"fieldname": "hr_and_payroll_tab",
@@ -236,6 +247,45 @@ def get_custom_fields():
 			},
 		],
 		"Employee": [
+			{
+				"fieldname": "firebase_provisioning_section",
+				"fieldtype": "Section Break",
+				"label": _("Firebase Provisioning"),
+				"insert_after": "create_user_automatically",
+				"collapsible": 1,
+			},
+			{
+				"fieldname": "firebase_provisioning_status",
+				"fieldtype": "Select",
+				"label": _("Firebase Provisioning Status"),
+				"options": "\nPending\nProvisioning\nProvisioned\nFailed\nRetry Required",
+				"default": "Pending",
+				"read_only": 1,
+				"insert_after": "firebase_provisioning_section",
+			},
+			{
+				"fieldname": "firebase_invitation_status",
+				"fieldtype": "Select",
+				"label": _("Firebase Invitation Status"),
+				"options": "\nNot Generated\nGenerated\nQueued\nSent\nFailed\nNot Configured\nAlready Queued",
+				"default": "Not Generated",
+				"read_only": 1,
+				"insert_after": "firebase_provisioning_status",
+			},
+			{
+				"fieldname": "firebase_last_provisioned_on",
+				"fieldtype": "Datetime",
+				"label": _("Firebase Last Provisioned On"),
+				"read_only": 1,
+				"insert_after": "firebase_invitation_status",
+			},
+			{
+				"fieldname": "firebase_provisioning_message",
+				"fieldtype": "Small Text",
+				"label": _("Firebase Provisioning Message"),
+				"read_only": 1,
+				"insert_after": "firebase_last_provisioned_on",
+			},
 			{
 				"fieldname": "employment_type",
 				"fieldtype": "Link",

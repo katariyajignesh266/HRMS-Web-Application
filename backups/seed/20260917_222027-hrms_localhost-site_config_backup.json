@@ -1,0 +1,13 @@
+{
+ "db_name": "_5f019871e501adaf",
+ "db_password": "iZfpZsgxqiW5Ulr6",
+ "db_type": "mariadb",
+ "db_user": "_5f019871e501adaf",
+ "developer_mode": 1,
+ "encryption_key": "nrbe62AiQxtol9ANKtiZb7RH0Km_PxiO2JSTJBI8zus=",
+ "installed_apps": [
+  "frappe",
+  "erpnext",
+  "hrms"
+ ]
+}

@@ -40,6 +40,9 @@
 				</div>
 
 				<div class="mx-auto mt-10 w-full px-8 sm:w-96">
+					<div v-if="firebaseStatus.data?.configured" class="mb-4 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+						Firebase authentication is enabled.
+					</div>
 					<form v-if="!user_pass_login_disabled.data" class="flex flex-col space-y-4" @submit.prevent="submit">
 						<Input
 							:label="__('Email')"
@@ -177,7 +180,7 @@ async function submit(e) {
 			}
 		}
 	} catch (error) {
-		errorMessage.value = error.messages.join("\n")
+		errorMessage.value = error?.messages?.join("\n") || error?.message || __("Authentication failed. Please try again.")
 	}
 }
 
@@ -190,6 +193,11 @@ const user_pass_login_disabled = createResource({
 
 const authProviders = createResource({
 	url: "hrms.api.oauth.oauth_providers",
+	auto: true,
+})
+
+const firebaseStatus = createResource({
+	url: "hrms.api.firebase_auth.firebase_status",
 	auto: true,
 })
 </script>
