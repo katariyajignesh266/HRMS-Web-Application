@@ -1,224 +1,282 @@
-# Frappe HRMS — Portable & Reproducible Docker Environment
+# Frappe HRMS — Customized, Portable & Reproducible Docker Environment
 
-> **One-Command Setup for Any Windows Laptop with Docker Desktop & VS Code**
+> A customized Frappe HRMS development environment with Docker Desktop portability, Firebase Authentication integration, automatic Employee account provisioning, Gmail SMTP invitations, persistent database/site storage, backup/restore support, and verified local employee/admin flows.
 
-```powershell
-# 1. Clone repository
-git clone <repository-url> hrms
-cd hrms
+This repository is based on the open-source **Frappe HRMS** project and contains project-specific changes made for the HRMS development environment.
 
-# 2. Run automated setup (pre-checks Docker, configures .env, restores seed database, launches services)
-.\setup.ps1
+Repository: https://github.com/katariyajignesh266/HRMS-Web-Application  
+Development branch: `hrms-development`
+
+---
+
+## What Was Customized
+
+The upstream Frappe HRMS application was extended rather than replaced. The main project work is concentrated around deployment portability, authentication, employee identity provisioning, email delivery, and local development reliability.
+
+### Major customizations
+
+- Portable Docker environment for Windows + Docker Desktop.
+- Persistent MariaDB and Frappe Bench Docker volumes.
+- Automated first-run site/bench bootstrap.
+- Optional sanitized seed backup restoration.
+- PowerShell lifecycle, backup and restore tooling.
+- Firebase Authentication integration using Firebase Admin SDK.
+- Secure Firebase ID-token verification on the server.
+- Firebase UID mapping through a custom `User.firebase_uid` field.
+- Firebase identity mapped to Frappe System Users.
+- Automatic Employee creation/linking when required by the Firebase login flow.
+- Employee-to-Frappe-User-to-Firebase account provisioning.
+- Idempotent provisioning and retry handling.
+- Employee provisioning status and invitation status fields.
+- `Provision Firebase Login` action from the Employee form.
+- `Resend Firebase Invitation` action from the Employee form.
+- Firebase password setup/reset-link generation.
+- Frappe Email Queue integration.
+- Gmail SMTP configuration from environment variables.
+- SMTP status reporting for System Managers without exposing credentials.
+- Firestore user-profile synchronization during Employee provisioning.
+- Frontend support for the HRMS employee application under the `/hrms` route.
+- Docker-compatible frontend asset build using Vite.
+- Persistent developer mode, scheduler and migration handling.
+- Explicit protection against accidentally recreating or overwriting an incomplete/persistent site.
+- End-to-end authentication and Employee provisioning verification.
+
+---
+
+## Architecture
+
+The customized system keeps **Frappe/MariaDB as the HRMS source of truth**.
+
+Firebase is used for authentication and identity integration; it is not the primary HRMS database.
+
+```text
+                    ┌─────────────────────────┐
+                    │       Employee          │
+                    │    Email + Password     │
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │ Firebase Authentication │
+                    │   Identity / ID Token   │
+                    └────────────┬────────────┘
+                                 │
+                         Firebase ID Token
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │ Frappe Firebase API     │
+                    │ Admin SDK verification  │
+                    └────────────┬────────────┘
+                                 │
+                      UID / verified email
+                                 │
+                                 ▼
+              ┌────────────────────────────────────┐
+              │       Frappe User / Employee      │
+              │                                    │
+              │ User.firebase_uid                   │
+              │ Employee.user_id                    │
+              │ Employee permissions                │
+              └────────────────┬───────────────────┘
+                               │
+                               ▼
+                    ┌─────────────────────────┐
+                    │       MariaDB           │
+                    │ HRMS source of truth    │
+                    └─────────────────────────┘
+```
+
+### Employee provisioning flow
+
+```text
+Employee created/selected
+        │
+        ▼
+Validate employee login email
+        │
+        ▼
+Create or reuse Frappe User
+        │
+        ▼
+Create or reuse Firebase User
+        │
+        ▼
+Store Firebase UID on User
+        │
+        ▼
+Link Employee.user_id
+        │
+        ▼
+Sync Employee identity to Firebase/Firestore
+        │
+        ▼
+Generate Firebase password setup link
+        │
+        ▼
+Frappe Email Queue
+        │
+        ▼
+Gmail SMTP
+        │
+        ▼
+Employee mailbox
 ```
 
 ---
 
-## Verified Local URLs
+## Quick Start — Windows + Docker Desktop
 
-| Service                 | Local URL                                                                                                                                              | Notes                                          |
-| :---------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------- |
-| **MAIN HRMS URL**       | **[http://localhost:8000/hrms](http://localhost:8000/hrms)**                                                                                           | Primary Employee & HR Self-Service Portal      |
-| **Frappe Desk / Admin** | **[http://localhost:8000/app](http://localhost:8000/app)**                                                                                             | Frappe Framework & ERPNext Management Desk     |
-| **Firebase Status API** | **[http://localhost:8000/api/method/hrms.api.firebase_auth.firebase_status](http://localhost:8000/api/method/hrms.api.firebase_auth.firebase_status)** | Health endpoint for Firebase Auth integration  |
-| **Socket.IO Realtime**  | `http://localhost:9000`                                                                                                                                | Realtime push notification & WebSocket gateway |
+### Requirements
 
-**Default Admin Credentials:**
+- Windows 10/11
+- Docker Desktop
+- Git
+- VS Code recommended
+- Internet connection for the first Docker bootstrap
 
-- **Username:** `Administrator`
-- **Password:** `admin`
+### First-time setup
 
----
-
-## Daily PowerShell Workflow Commands
-
-From the repository root (or inside `.\scripts\`):
-
-| Command         | Action                                                         | Data Safety                               |
-| :-------------- | :------------------------------------------------------------- | :---------------------------------------- |
-| `.\setup.ps1`   | First-time automated bootstrap & verification                  | Idempotent; preserves existing volumes    |
-| `.\start.ps1`   | Starts containers & verifies availability                      | Safe; fast startup                        |
-| `.\stop.ps1`    | Stops containers                                               | Safe; preserves all persistent volumes    |
-| `.\restart.ps1` | Restarts all containers cleanly                                | Safe; preserves all data                  |
-| `.\status.ps1`  | Live container health, open ports & DB counts                  | Read-only diagnostic check                |
-| `.\logs.ps1`    | View logs (`.\logs.ps1 -Follow` or `-Service frappe`)          | Read-only log viewer                      |
-| `.\update.ps1`  | Rebuilds changed layers & runs safe migrations                 | Preserves database; runs `bench migrate`  |
-| `.\backup.ps1`  | Creates on-demand backup in `.backups/` (`-Seed` updates seed) | Safe; creates snapshot                    |
-| `.\restore.ps1` | Restores snapshot from backup directory                        | Interactive confirmation before overwrite |
-| `.\reset.ps1`   | Completely destroys containers & volumes                       | Destructive; requires typing `RESET`      |
-
----
-
-<div align="center">
-	<a href="https://frappe.io/hr">
-		<img src=".github/frappe-hr-logo.png" height="80px" width="80px" alt="Frappe HR Logo">
-	</a>
-	<h2>Frappe HR</h2>
-	<p align="center">
-		<p>Open Source, modern, and easy-to-use HR and Payroll Software</p>
-	</p>
-
-[![CI](https://github.com/frappe/hrms/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/frappe/hrms/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/frappe/hrms/branch/develop/graph/badge.svg?token=0TwvyUg3I5)](https://codecov.io/gh/frappe/hrms)
-
-<a href="https://trendshift.io/repositories/10972" target="_blank"><img src="https://trendshift.io/api/badge/repositories/10972" alt="frappe%2Fhrms | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-
-</div>
-
-<div align="center">
-	<img src=".github/hrms-hero.png"/>
-</div>
-
-<div align="center">
-	<a href="https://frappe.io/hr">Website</a>
-	-
-	<a href="https://docs.frappe.io/hr/introduction">Documentation</a>
-</div>
-
-## Frappe HR
-
-Frappe HR has everything you need to drive excellence within the company. It's a complete HRMS solution with over 13 different modules right from Employee Management, Onboarding, Leaves, to Payroll, Taxation, and more!
-
-## Motivation
-
-When Frappe team started growing in terms of size, we needed an open-source HR and Payroll software. We didn't find any "true" open-source HR software out there and so decided to build one ourselves.
-Initially, it was a set of modules within ERPNext but version 14 onwards, as the modules became more mature, Frappe HR was created as a separate product.
-
-## Key Features
-
-- **Employee Lifecycle**: From onboarding employees, managing promotions and transfers, all the way to documenting feedback with exit interviews, make life easier for employees throughout their life cycle.
-- **Leave and Attendance**: Configure leave policies, pull regional holidays with a click, check-in and check-out with geolocation capturing, track leave balances and attendance with reports.
-- **Expense Claims and Advances**: Manage employee advances, claim expenses, configure multi-level approval workflows, all this with seamless integration with ERPNext accounting.
-- **Performance Management**: Track goals, align goals with key result areas (KRAs), enable employees to evaluate themselves, make managing appraisal cycles easy.
-- **Payroll & Taxation**: Create salary structures, configure income tax slabs, run standard payroll, accommodate additional salaries and off cycle payments, view income breakup on salary slips and so much more.
-- **Frappe HR Mobile App**: Apply for and approve leaves on the go, check-in and check-out, access employee profile right from the mobile app.
-
-<details open>
-
-<summary>View Screenshots</summary>
-	<img src=".github/hrms-appraisal.png"/>
-	<img src=".github/hrms-requisition.png"/>
-	<img src=".github/hrms-attendance.png"/>
-	<img src=".github/hrms-salary.png"/>
-	<img src=".github/hrms-pwa.png"/>
-</details>
-
-### Under the Hood
-
-- [**Frappe Framework**](https://github.com/frappe/frappe): A full-stack web application framework written in Python and Javascript. The framework provides a robust foundation for building web applications, including a database abstraction layer, user authentication, and a REST API.
-
-- [**Frappe UI**](https://github.com/frappe/frappe-ui): A Vue-based UI library, to provide a modern user interface. The Frappe UI library provides a variety of components that can be used to build single-page applications on top of the Frappe Framework.
-
-## Production Setup
-
-### Managed Hosting
-
-You can try [Frappe Cloud](https://frappecloud.com), a simple, user-friendly and sophisticated [open-source](https://github.com/frappe/press) platform to host Frappe applications with peace of mind.
-
-It takes care of installation, setup, upgrades, monitoring, maintenance and support of your Frappe deployments. It is a fully featured developer platform with an ability to manage and control multiple Frappe deployments.
-
-<div>
-	<a href="https://frappecloud.com/hrms/signup" target="_blank">
-		<picture>
-			<source media="(prefers-color-scheme: dark)" srcset="https://frappe.io/files/try-on-fc-white.png">
-			<img src="https://frappe.io/files/try-on-fc-black.png" alt="Try on Frappe Cloud" height="28" />
-		</picture>
-	</a>
-</div>
-
-## Development setup
-
-## Development setup
-
-### Docker
-
-You need Docker Desktop and Git. The commands below are portable across team members and keep runtime data in Docker-managed volumes.
-
-#### First-time setup
+Clone the development branch:
 
 ```powershell
-git clone <repository-url> hrms
+git clone -b hrms-development https://github.com/katariyajignesh266/HRMS-Web-Application.git hrms
 cd hrms
+```
+
+Create the local environment file:
+
+```powershell
 Copy-Item .env.example .env
+```
+
+For a normal development environment, configure the required local Firebase and SMTP secrets in `.env`.
+
+Then start the environment:
+
+```powershell
 docker compose --env-file .env -f docker/docker-compose.yml up -d
+```
+
+Follow the Frappe container logs:
+
+```powershell
 docker compose --env-file .env -f docker/docker-compose.yml logs -f frappe
 ```
 
-The first run downloads the Frappe and ERPNext dependencies and can take several minutes. Open `http://localhost:8000` after the logs show the web process is listening. The development defaults are in `.env`; keep that file local and never commit it.
+The first bootstrap can take several minutes because the Frappe bench, ERPNext dependencies, HRMS assets and required Python/Node packages may need to be initialized.
 
-The named `frappe-bench` volume contains the complete Frappe bench, including the `sites` directory, site configuration, public uploads, private uploads, and installed apps. This keeps those files persistent without nested mounts that behave differently between Docker Desktop installations.
-The named Docker volumes contain the local runtime state:
+---
 
-- `docker_mariadb-data` contains the MariaDB database, including Employees, Users, setup-wizard completion, and HRMS transactions.
-- `docker_frappe-bench` contains the complete Frappe bench, including the `sites` directory, site configuration, public uploads, private uploads, and installed apps.
+## Verified Local Access
 
-The volume prefix comes from `HRMS_VOLUME_PREFIX=docker` in `.env`. Keep the same prefix on every laptop if you want Docker to reuse the same local volumes after container recreation.
+Only the main Frappe Desk/Admin entry point is listed here intentionally.
 
-#### Daily lifecycle commands
+### Frappe Desk / Admin
 
-Run these from the repository root:
+**http://localhost:8000/app**
 
-```powershell
-# Start existing containers
-docker compose --env-file .env -f docker/docker-compose.yml start
+Use this entry point for administration, Employee management, HRMS configuration and role-based access.
 
-# Stop containers without deleting data
-docker compose --env-file .env -f docker/docker-compose.yml stop
+### Default Administrator
 
-# Restart containers without deleting data
-docker compose --env-file .env -f docker/docker-compose.yml restart
-
-# Recreate containers while retaining all named volumes
-docker compose --env-file .env -f docker/docker-compose.yml up -d --force-recreate
-
-# View Frappe logs
-docker compose --env-file .env -f docker/docker-compose.yml logs -f frappe
+```text
+Username: Administrator
+Password: admin
 ```
 
-Do not use `docker compose down -v` for normal development. The `-v` option deletes the MariaDB volume and its database. It is only for intentionally destroying a disposable environment.
-Do not use `docker compose down -v` for normal development. The `-v` option deletes the MariaDB volume and its database, so the next startup creates a fresh site and Frappe shows the setup wizard again. It is only for intentionally destroying a disposable environment.
+The password is controlled by `FRAPPE_ADMIN_PASSWORD` in `.env` and should be changed for any non-disposable environment.
 
-#### Backup and restore
+---
 
-Create a database and site-files backup outside the repository:
+## Employee Testing Account
 
-```powershell
-cd docker
-.\backup.ps1
+A dedicated Employee account was used during development to verify the Employee login and dashboard flow.
+
+**Do not commit the real Employee email address or password to a public GitHub README.**
+
+For local testing, keep the credentials in your private `.env`, team documentation, password manager, or another private channel:
+
+```text
+Employee email: <TEST_EMPLOYEE_EMAIL>
+Employee password: <TEST_EMPLOYEE_PASSWORD>
+Role: Employee
 ```
 
-Backups are written to `.backups/`, which is ignored by Git. Before restoring, stop the application and restore only into a disposable validation site. The restore script refuses to overwrite an existing site; use Frappe's explicit restore command after creating a fresh target site:
-Backups are written to `.backups/`, which is ignored by Git. Before restoring manually, stop the application and restore only into a disposable validation site. The restore script refuses to overwrite an existing site; use Frappe's explicit restore command after creating a fresh target site:
+The Employee account is intended to verify:
 
-```powershell
-.\restore.ps1 ..\.backups\<backup-directory> -TargetSite hrms.restore.localhost
+- Email/password authentication.
+- Firebase authentication.
+- Firebase-to-Frappe identity mapping.
+- Employee/User association.
+- Employee role permissions.
+- Employee dashboard access.
+- Attendance/leave/expense/salary self-service areas exposed to the Employee role.
+- Logout and subsequent login.
+- Session creation after Firebase token verification.
+
+**Important:** never place a real password, Firebase Admin private key, Gmail App Password, or other secret in `README.md`, source code, or Git history.
+
+---
+
+## Authentication Design
+
+### Firebase Authentication
+
+The customized authentication flow uses:
+
+- Firebase Web configuration for client initialization.
+- Firebase Admin SDK on the Frappe server.
+- Firebase ID tokens as the authentication hand-off.
+- `User.firebase_uid` as the optional primary identity mapping.
+- Verified Firebase email as the fallback mapping mechanism.
+- Native Frappe session creation after successful verification.
+
+The server verifies Firebase tokens before creating the Frappe session.
+
+The authentication flow is:
+
+```text
+1. Employee signs in with Firebase
+2. Firebase returns an ID token
+3. Token is sent to Frappe
+4. Firebase Admin SDK verifies the token
+5. UID/email is mapped to a Frappe User
+6. Frappe verifies that the User is enabled
+7. Frappe verifies System User access
+8. Employee identity is ensured/mapped
+9. Frappe creates the normal session
+10. HRMS permissions control subsequent requests
 ```
 
-The database backup is produced by `bench --site <site> backup --with-files --compress`. Never commit backup archives, site files, Docker volumes, Firebase private credentials, or SMTP App Passwords.
+Firebase passwords are not passed to the Frappe HRMS database.
 
-#### Shared demo seed
+### Server-side verification
 
-For this project, you can also keep a sanitized development/demo backup in `docker/seed/` so a brand-new laptop starts with the same demo company, users, and Employees instead of opening the setup wizard.
+The server verifies:
 
-1. Create the desired local state: complete setup, create demo Employees, and verify login.
-2. Run `cd docker` and `.\backup.ps1 -Seed`.
-3. The generated backup is saved in `.backups/` and copied to `docker/seed/<timestamp>/`.
-4. Commit only safe demo data in `docker/seed/`. Do not commit real employee data, private Firebase Admin JSON, SMTP passwords, or production backups.
+- Token validity.
+- Expiration.
+- Revocation.
+- Firebase identity.
+- UID mapping.
+- Verified email fallback.
+- Enabled Frappe User state.
+- System User type.
 
-On a fresh machine, the first `docker compose ... up -d` checks `HRMS_SEED_BACKUP_DIR` and restores the newest seed backup before the site is used. On an existing machine, the script does not overwrite the current site; it keeps using the Docker volumes.
+Invalid, expired, revoked, disabled or unmapped accounts are rejected.
 
-#### Environment and secrets
+---
 
-`.env.example` contains safe development placeholders. Copy it to `.env` and change local values if needed. Phase 1 does not require Firebase or SMTP settings. Later Firebase and Gmail settings will be supplied through local environment/site configuration, not source-code edits.
+## Firebase Configuration
 
-The default development login is `Administrator` / `admin` unless you change `FRAPPE_ADMIN_PASSWORD` in `.env` before first site creation.
+Copy the example environment file:
 
-### Phase 2: Firebase authentication
+```powershell
+Copy-Item .env.example .env
+```
 
-Phase 2 uses Firebase Authentication for email/password authentication and keeps Frappe/MariaDB as the source of truth for users, Employees, roles, permissions, and HRMS data. Firebase UID is only an identity key; the Frappe Employee ID remains canonical.
-
-#### Configuration
-
-Copy `.env.example` to `.env` and provide the shared development Firebase Web configuration:
+Configure the Firebase Web values locally:
 
 ```dotenv
 FIREBASE_API_KEY=your-web-api-key
@@ -228,82 +286,73 @@ FIREBASE_APP_ID=your-web-app-id
 FIREBASE_UID_FIELD=firebase_uid
 ```
 
-The backend must also verify ID tokens with Firebase Admin credentials. Use one of these local-only options:
+Configure Firebase Admin credentials using one of the supported local-only mechanisms:
 
 ```dotenv
-# Recommended for local Docker development. Keep the JSON value in .env only.
 FIREBASE_ADMIN_CREDENTIALS_JSON={"type":"service_account",...}
+```
 
-# Alternative when the credential file is mounted or available inside the container.
+or:
+
+```dotenv
 FIREBASE_ADMIN_CREDENTIALS_FILE=/run/secrets/firebase-admin.json
 ```
 
-Never commit `.env`, a service-account JSON file, Admin private keys, API passwords, or Firebase credentials. Web API key/project/app values are client configuration, but Admin credentials are server-only. The frontend receives only the Web configuration through the backend `firebase_config` endpoint.
+Admin credentials are server-side secrets and must never be committed.
 
-#### Existing-user mapping
+---
 
-Phase 2 does not create Firebase users, Frappe Users, or Employees. A Firebase user must already exist and an enabled Frappe System User must already exist with the same verified email. If the optional `FIREBASE_UID_FIELD` field exists on `User`, UID is matched first; verified email is the fallback mapping. The user must already be linked to an Employee through Frappe's `Employee.user_id` field to use employee-specific routes.
+## Employee Provisioning
 
-#### Authentication flow
+The Employee provisioning implementation is designed to be **idempotent**.
 
-1. The frontend signs in with Firebase Web Auth using email/password.
-2. Firebase returns an ID token to the frontend.
-3. The frontend sends only that ID token to `login_with_firebase_token`.
-4. The backend verifies signature, issuer, audience, expiry, revocation, UID, and email using Firebase Admin SDK.
-5. The backend maps the verified identity to an enabled Frappe System User.
-6. Frappe's native `login_manager.login_as()` creates the normal Frappe session cookie.
-7. Frappe roles and permissions continue to authorize all HRMS API calls.
-
-The Firebase password is never sent to the Frappe backend. Logout invalidates the Frappe session and signs out of Firebase. Browser refresh restores Firebase state and exchanges a fresh ID token for a Frappe session.
-
-#### Phase 2 endpoints
-
-- `hrms.api.firebase_auth.firebase_config` — returns safe Firebase Web configuration.
-- `hrms.api.firebase_auth.firebase_status` — reports public configuration and server-verification readiness.
-- `hrms.api.firebase_auth.login_with_firebase_token` — verifies an ID token and creates the Frappe session.
-- `logout` — existing Frappe logout endpoint, followed by Firebase sign-out in the frontend.
-
-Invalid, expired, revoked, disabled, malformed, or unmapped Firebase accounts receive controlled authentication/permission errors. Raw ID tokens and passwords are not logged.
-
-#### Team setup
-
-Each team member clones the repository, copies `.env.example` to `.env`, adds the shared development Web configuration and server-only Admin credential through their local secret mechanism, then runs the normal Docker startup commands. No source-code edits or machine-specific paths are needed. Firebase Authentication must have Email/Password enabled, and the corresponding Frappe User/Employee mapping must already exist before login can succeed.
-
-### Phase 3: Employee provisioning
-
-Phase 3 provisions login identity from an existing or newly created Frappe Employee without making Firebase the HRMS database. Frappe/MariaDB remains authoritative for Employee records, Frappe Users, roles, permissions, and HRMS data.
-
-When `Create User Automatically` is enabled on a new Employee, HRMS now attempts to:
+When an Employee needs an application login, the system can:
 
 1. Validate the Employee login email.
-2. Create or reuse a Frappe System User for that email.
-3. Create or reuse the Firebase Authentication user for that email.
-4. Store Firebase UID on `User.firebase_uid`.
-5. Link `Employee.user_id` to the Frappe User.
-6. Queue a Firebase password setup/reset invitation through Frappe email.
+2. Create or reuse the Frappe System User.
+3. Assign the Employee role.
+4. Link `Employee.user_id`.
+5. Create or reuse the Firebase Authentication account.
+6. Store the Firebase UID on `User.firebase_uid`.
+7. Prevent the same Firebase UID from being mapped to another User.
+8. Synchronize the Employee identity to the Firebase/Firestore user document.
+9. Generate a Firebase password setup link.
+10. Queue the invitation through Frappe Email Queue.
 
-The same operation is available from the Employee form as `Provision Firebase Login`, so failed or partial provisioning can be retried safely. Provisioning is idempotent: an existing linked Frappe User, existing Firebase user, or existing `User.firebase_uid` is reconciled instead of duplicated.
+Existing users are reconciled instead of duplicated.
 
-Employee records include provisioning state fields:
+### Employee form actions
 
-- `Firebase Provisioning Status`: `Pending`, `Provisioning`, `Provisioned`, `Failed`, or `Retry Required`.
-- `Firebase Invitation Status`: `Not Generated`, `Generated`, `Queued`, `Failed`, or `Not Configured`.
-- `Firebase Last Provisioned On`.
-- `Firebase Provisioning Message`.
+The Employee form provides:
 
-Firebase and MariaDB are separate systems, so failures are recorded as retryable state instead of being treated as one database transaction. If Firebase credentials are missing or Firebase is unavailable, the Employee/Frappe User state remains available for retry and the status is set to `Retry Required`.
+- **Provision Firebase Login**
+- **Resend Firebase Invitation**
 
-Invitation emails use Firebase Admin's password reset/setup link generation. No permanent plaintext password is generated, stored, or emailed. Frappe queues the email through its normal Email Queue; actual delivery still depends on a configured outgoing Email Account.
+These actions use authenticated server-side endpoints and respect Employee write permissions.
 
-### Phase 4: Gmail SMTP invitation delivery
+### Provisioning states
 
-Phase 4 configures the development container to create/update Frappe's default outgoing Email Account from local environment variables. This keeps the flow as:
+Employee provisioning tracks state so failures can be retried rather than leaving the Employee in an unknown state.
+
+Typical states include:
 
 ```text
-HRMS provisioning -> Frappe Email Queue -> Gmail SMTP -> employee mailbox
+Pending
+Provisioning
+Provisioned
+Failed
+Retry Required
 ```
 
-Copy `.env.example` to `.env` and configure a dedicated project Gmail account:
+The Employee record also tracks invitation status, last provisioning time and provisioning messages.
+
+---
+
+## Gmail SMTP Integration
+
+The customized environment can configure Frappe's default outgoing Email Account from environment variables.
+
+Example:
 
 ```dotenv
 SMTP_HOST=smtp.gmail.com
@@ -314,127 +363,702 @@ SMTP_USE_TLS=true
 SMTP_SENDER=your-project-email@gmail.com
 ```
 
-The Gmail account must have 2-Step Verification enabled and must use a Gmail App Password. Do not use the normal Gmail password. Do not use a personal Gmail account, do not commit SMTP credentials, and do not claim delivery until the Frappe Email Queue has actually sent the message.
+Use a dedicated development/project Gmail account and a Gmail App Password.
 
-On container startup, if `SMTP_USERNAME` and `SMTP_PASSWORD` are present, Docker calls `hrms.api.smtp_config.configure_gmail_smtp_from_env`. That creates or updates the `HRMS Gmail SMTP` Email Account as the default outgoing account with STARTTLS on port 587. The password is stored through Frappe's Password field and is never exposed to the frontend.
+Do not use a normal Gmail account password.
 
-Invitation statuses:
+The resulting flow is:
 
-- `Not Generated`: no setup link has been generated.
-- `Queued`: an invitation exists in Frappe Email Queue but has not necessarily been delivered.
-- `Sent`: Frappe Email Queue reports the latest invitation email as sent.
-- `Already Queued`: provisioning retry found an active queued/sent invitation and did not enqueue another.
-- `Failed` or `Not Configured`: Firebase link generation or email queueing failed and can be retried.
+```text
+Employee Provisioning
+        ↓
+Firebase password setup link
+        ↓
+Frappe Email Queue
+        ↓
+Gmail SMTP
+        ↓
+Employee mailbox
+```
 
-Retrying `Provision Firebase Login` reconciles existing Frappe/Firebase users and does not create duplicate accounts. It also does not send unlimited duplicate invitations when one is already queued or sent. Use `Resend Firebase Invitation` on the Employee form to intentionally generate a fresh Firebase setup link and queue another invitation for an already linked Employee.
+The application tracks invitation states such as:
 
-Relevant endpoints:
+- Not Generated
+- Generated
+- Queued
+- Sent
+- Failed
+- Not Configured
+- Already Queued
 
-- `hrms.api.employee_provisioning.provision_employee` — authenticated retry/provision endpoint for an Employee. It requires write permission on the Employee and never exposes Firebase Admin credentials.
-- `hrms.api.employee_provisioning.resend_invitation` — authenticated resend endpoint. It reuses the existing Employee/User/Firebase account, generates a fresh Firebase setup link, and queues a new Frappe Email Queue entry.
-- `hrms.api.smtp_config.gmail_smtp_status` — System Manager-only status endpoint for checking default outgoing SMTP configuration without exposing secrets.
+Provisioning retries do not intentionally create duplicate accounts or unlimited duplicate invitations.
 
-### Local
-
-1. Set up bench by following the [Installation Steps](https://frappeframework.com/docs/user/en/installation) and start the server and keep it running
-   ```sh
-   $ bench start
-   ```
-   ```sh
-   $ bench start
-   ```
-2. In a separate terminal window, run the following commands
-   ```sh
-   $ bench new-site hrms.localhost
-   $ bench get-app erpnext
-   $ bench get-app hrms
-   $ bench --site hrms.localhost install-app hrms
-   $ bench --site hrms.localhost add-to-hosts
-   ```
-   ```sh
-   $ bench new-site hrms.localhost
-   $ bench get-app erpnext
-   $ bench get-app hrms
-   $ bench --site hrms.localhost install-app hrms
-   $ bench --site hrms.localhost add-to-hosts
-   ```
-3. You can access the site at `http://hrms.localhost:8080`
+A separate resend action is available when a new invitation must be generated.
 
 ---
 
-## Parent Project Integration (`MAIN_PROJECT/HRMS/`)
+## Custom API Components
 
-This HRMS repository is architected as an independent, portable sub-component intended to reside inside a larger parent project:
+### Firebase authentication
+
+`hrms.api.firebase_auth`
+
+Provides:
+
+- Firebase configuration retrieval.
+- Firebase Admin SDK initialization.
+- Firebase ID-token verification.
+- Firebase-to-Frappe User mapping.
+- Employee identity assurance.
+- Frappe session creation.
+- Firebase configuration/status responses.
+
+Important methods:
+
+```text
+login_with_firebase_token
+firebase_config
+firebase_status
+```
+
+### Employee provisioning
+
+`hrms.api.employee_provisioning`
+
+Provides:
+
+```text
+provision_employee
+resend_invitation
+provision_employee_login
+resend_employee_invitation
+```
+
+The implementation handles existing Frappe Users, existing Firebase Users, UID conflicts, Employee linking, invitation status and retryable failures.
+
+### SMTP configuration
+
+`hrms.api.smtp_config`
+
+Provides:
+
+```text
+configure_gmail_smtp_from_env
+gmail_smtp_status
+```
+
+The status endpoint is restricted to System Managers and does not expose SMTP passwords.
+
+---
+
+## Database / Custom Field Changes
+
+The development branch adds migration patches for the Firebase integration.
+
+Relevant patches include:
+
+```text
+hrms.patches.v16_0.create_firebase_uid_field_in_user
+hrms.patches.v16_0.create_employee_firebase_provisioning_fields
+hrms.patches.v16_0.update_employee_invitation_status_options
+```
+
+The custom User field:
+
+```text
+User.firebase_uid
+```
+
+is used to associate a Firebase identity with the corresponding Frappe User.
+
+Employee records receive Firebase provisioning/invitation state fields so that the integration remains observable and retryable.
+
+---
+
+## Docker Environment
+
+The Docker setup uses:
+
+- Frappe Bench
+- Frappe Framework
+- ERPNext
+- Frappe HRMS
+- MariaDB
+- Redis
+
+Persistent state is kept in named Docker volumes.
+
+### Persistent volumes
+
+```text
+${HRMS_VOLUME_PREFIX}_mariadb-data
+${HRMS_VOLUME_PREFIX}_frappe-bench
+```
+
+With the default configuration:
+
+```text
+docker_mariadb-data
+docker_frappe-bench
+```
+
+The MariaDB volume contains HRMS database records.
+
+The Frappe Bench volume contains the Bench installation, sites, configuration and uploaded files.
+
+This design avoids relying on machine-specific absolute paths.
+
+---
+
+## Docker Bootstrap Behaviour
+
+The custom initialization script performs the following tasks:
+
+1. Detects or initializes the Frappe Bench.
+2. Configures MariaDB and Redis to use Docker service names.
+3. Installs ERPNext when required.
+4. Links the customized HRMS application into the Bench.
+5. Installs the Firebase Admin SDK when required.
+6. Installs frontend dependencies when required.
+7. Creates or restores the Frappe site.
+8. Installs HRMS if required.
+9. Builds HRMS frontend assets.
+10. Runs migrations when required.
+11. Configures Gmail SMTP when credentials are present.
+12. Enables developer mode.
+13. Enables the scheduler.
+14. Clears cache.
+15. Starts the Frappe development server.
+
+The initialization is designed to be repeatable without destroying existing persistent data.
+
+---
+
+## Daily Development Commands
+
+From the repository root:
+
+### Start
+
+```powershell
+docker compose --env-file .env -f docker/docker-compose.yml start
+```
+
+### Stop
+
+```powershell
+docker compose --env-file .env -f docker/docker-compose.yml stop
+```
+
+### Restart
+
+```powershell
+docker compose --env-file .env -f docker/docker-compose.yml restart
+```
+
+### Recreate containers without deleting volumes
+
+```powershell
+docker compose --env-file .env -f docker/docker-compose.yml up -d --force-recreate
+```
+
+### View Frappe logs
+
+```powershell
+docker compose --env-file .env -f docker/docker-compose.yml logs -f frappe
+```
+
+---
+
+## Data Safety
+
+Do **not** use this for normal development:
+
+```powershell
+docker compose down -v
+```
+
+The `-v` option removes named volumes and can destroy the local MariaDB database and persistent Frappe site state.
+
+Normal development should use:
+
+```text
+stop
+start
+restart
+up -d --force-recreate
+```
+
+Persistent volumes should only be removed when a deliberately destructive reset is required.
+
+---
+
+## Backup
+
+Create a database/site-files backup:
+
+```powershell
+cd docker
+.\backup.ps1
+```
+
+Backups are stored outside normal source files under:
+
+```text
+.backups/
+```
+
+The backup process uses Frappe's site backup mechanism with database and site files.
+
+### Seed backup
+
+For a clean development/demo environment:
+
+```powershell
+cd docker
+.\backup.ps1 -Seed
+```
+
+Only sanitized demo data should be committed.
+
+Never commit:
+
+- Real employee records.
+- Firebase Admin credentials.
+- Service-account private keys.
+- Gmail App Passwords.
+- SMTP passwords.
+- Production backups.
+- Private uploaded employee files.
+
+---
+
+## Restore
+
+Restore only into a disposable validation site.
+
+Example:
+
+```powershell
+.\restore.ps1 ..\.backups\<backup-directory> -TargetSite hrms.restore.localhost
+```
+
+The restore script intentionally refuses to overwrite the normal development site.
+
+---
+
+## Frontend
+
+The HRMS employee interface uses the existing Frappe HR frontend stack with:
+
+- Vue 3
+- Vite
+- Ionic Vue
+- Frappe UI
+- Tailwind CSS
+- Firebase Web SDK
+- Vite PWA tooling
+
+The frontend build command is:
+
+```bash
+yarn build
+```
+
+The build is configured for the Frappe asset path and generates the HRMS web entry point.
+
+The router uses:
+
+```text
+createWebHistory("/hrms")
+```
+
+so the employee application remains compatible with the Frappe HRMS route structure.
+
+---
+
+## Employee Experience
+
+The customized Employee application provides access to the HR self-service areas supported by the Employee role, including:
+
+- Employee home/dashboard.
+- Attendance.
+- Leave management.
+- Expense claims.
+- Salary slips.
+- Employee profile.
+- Notifications.
+- Settings.
+- Password management.
+- Other role-authorized HRMS features.
+
+Actual access is controlled by Frappe roles and permissions rather than by Firebase alone.
+
+---
+
+## Authentication and Authorization Separation
+
+A deliberate design decision in this project is to separate identity from authorization.
+
+### Firebase
+
+Responsible for:
+
+- Email/password identity.
+- Firebase UID.
+- ID-token issuance.
+- Authentication state.
+
+### Frappe / MariaDB
+
+Responsible for:
+
+- Employee records.
+- Frappe Users.
+- Roles.
+- Permissions.
+- Companies.
+- HRMS transactions.
+- Employee-to-User relationships.
+- Business data.
+
+This keeps HRMS authorization under Frappe even when Firebase is used for authentication.
+
+---
+
+## Testing & Verification
+
+The customized environment was tested through multiple layers.
+
+### Docker / infrastructure verification
+
+Verified:
+
+- Docker containers start successfully.
+- MariaDB becomes healthy.
+- Redis becomes healthy.
+- Frappe responds after startup.
+- Persistent volumes survive container recreation.
+- Existing site state is reused.
+- Fresh environments can bootstrap the site.
+- Frontend assets can be built inside the container.
+- Migrations execute successfully.
+
+### Firebase verification
+
+Verified:
+
+- Firebase configuration can be loaded.
+- Firebase Admin SDK initializes.
+- Valid Firebase ID tokens can be verified.
+- Missing tokens are rejected.
+- Invalid tokens are rejected.
+- Expired/revoked/disabled identities are rejected.
+- Unmapped Firebase users are rejected.
+- Firebase UID mapping works.
+- Verified-email fallback mapping works.
+- Frappe sessions are created after successful verification.
+- Logout/session invalidation behaviour was tested.
+
+### Employee provisioning verification
+
+Verified:
+
+- Employee login email validation.
+- Frappe User creation/reuse.
+- Employee role assignment.
+- Employee.user_id linking.
+- Firebase User creation/reuse.
+- Firebase UID persistence.
+- Duplicate prevention.
+- Firebase/Firestore user synchronization.
+- Provisioning retry behaviour.
+- Invitation generation.
+- Invitation queueing.
+- Invitation resend.
+- Provisioning status updates.
+
+### Gmail SMTP verification
+
+Verified:
+
+- Gmail SMTP configuration can be loaded from environment variables.
+- Frappe outgoing Email Account can be created/updated.
+- SMTP credentials are not exposed through the status response.
+- Firebase setup links can be generated.
+- Invitation emails enter the Frappe Email Queue.
+- Queue status can be reflected on the Employee record.
+
+### Employee end-to-end verification
+
+The final Employee flow was verified from authentication through HRMS access:
+
+```text
+Employee credentials
+        ↓
+Firebase authentication
+        ↓
+Firebase ID token
+        ↓
+Frappe server verification
+        ↓
+Frappe User mapping
+        ↓
+Employee mapping
+        ↓
+Frappe session
+        ↓
+Employee dashboard
+        ↓
+Role-based HRMS access
+```
+
+The development verification also covered successful login, protected endpoints, logout, rejection of invalid sessions, disabled-user handling and cleanup.
+
+---
+
+## Troubleshooting
+
+### Port already in use
+
+If the default ports are occupied, change the host ports in `.env`:
+
+```dotenv
+HRMS_WEB_PORT=8081
+HRMS_SOCKETIO_PORT=9001
+```
+
+Then recreate the containers:
+
+```powershell
+docker compose --env-file .env -f docker/docker-compose.yml up -d --force-recreate
+```
+
+### Frappe is still starting
+
+Check:
+
+```powershell
+docker compose --env-file .env -f docker/docker-compose.yml logs -f frappe
+```
+
+The first initialization can take several minutes.
+
+### Firebase login fails
+
+Check, in order:
+
+1. Firebase Web configuration.
+2. Firebase Admin credentials.
+3. Firebase Email/Password authentication.
+4. Firebase user existence.
+5. Frappe User existence/enabled state.
+6. `User.firebase_uid` mapping.
+7. Employee.user_id mapping.
+8. Frappe System User type.
+9. Browser console/network errors.
+10. Frappe container logs.
+
+### Employee provisioning fails
+
+Check:
+
+- Employee has a valid login email.
+- Employee is active.
+- Firebase Admin credentials are configured.
+- Firebase project is reachable.
+- Frappe User is not already linked to another active Employee.
+- Firebase UID is not mapped to another Frappe User.
+- Default Company exists when automatic Employee creation is required.
+- SMTP is configured when an invitation is expected.
+
+Provisioning is designed to be retryable.
+
+### Invitation email is not received
+
+Check:
+
+1. Gmail 2-Step Verification.
+2. Gmail App Password.
+3. SMTP username/password in `.env`.
+4. Frappe default outgoing Email Account.
+5. Frappe Email Queue.
+6. SMTP status from a System Manager account.
+7. Gmail delivery/spam filtering.
+
+A queued message is not the same as confirmed mailbox delivery.
+
+---
+
+## Project Structure
+
+Important customized areas:
+
+```text
+HRMS-Web-Application/
+├── docker/
+│   ├── docker-compose.yml
+│   ├── entrypoint.sh
+│   ├── init.sh
+│   ├── backup.ps1
+│   ├── restore.ps1
+│   └── seed/
+│
+├── frontend/
+│   ├── src/
+│   └── package.json
+│
+├── hrms/
+│   ├── api/
+│   │   ├── firebase_auth.py
+│   │   ├── employee_provisioning.py
+│   │   └── smtp_config.py
+│   │
+│   ├── patches/
+│   │   └── v16_0/
+│   │       ├── create_firebase_uid_field_in_user.py
+│   │       ├── create_employee_firebase_provisioning_fields.py
+│   │       └── update_employee_invitation_status_options.py
+│   │
+│   ├── public/
+│   │   └── js/
+│   │       └── erpnext/
+│   │           └── employee.js
+│   │
+│   └── hooks.py
+│
+├── .env.example
+└── README.md
+```
+
+---
+
+## Parent Project Integration
+
+The HRMS component is designed to remain portable when placed inside a larger project:
 
 ```text
 MAIN_PROJECT/
-├── frontend/             # Parent project frontend
-├── backend/              # Parent project API / services
+├── frontend/
+├── backend/
 ├── other-components/
-└── HRMS/                 # THIS REPOSITORY (Independent sub-module / folder)
-    ├── docker-compose.yml
-    ├── .env
-    ├── backups/seed/
-    ├── scripts/
-    │   ├── setup.ps1
-    │   ├── start.ps1
-    │   ├── ...
-    └── hrms/
+└── HRMS/
 ```
 
-### Key Integration Principles:
+The Docker setup avoids machine-specific absolute paths and supports configurable host ports.
 
-1. **No Absolute Paths**: All volume mappings and configurations use relative paths or container-internal mount paths (`/workspace`, `/home/frappe/frappe-bench`).
-2. **Customizable Port Mapping**: If the parent project uses port `8000` or `9000`, override HRMS ports in `.env`:
-   ```dotenv
-   HRMS_WEB_PORT=8081
-   HRMS_SOCKETIO_PORT=9001
-   ```
-3. **Isolated Docker Networking & Volumes**:
-   - Compose project name is explicitly set to `hrms` (`COMPOSE_PROJECT_NAME=hrms`).
-   - Volumes are prefixed: `docker_mariadb-data`, `docker_frappe-bench`.
-   - Networks are isolated (`hrms_default`).
-4. **Reverse Proxy / Gateway Routing**:
-   If the parent project uses an NGINX or Traefik gateway:
-   - Route `/hrms` and `/api/method/hrms.*` to `http://localhost:8000` (or `http://hrms-frappe:8000` if on a shared Docker bridge network).
-   - WebSocket `/socket.io/` routes to `http://localhost:9000`.
+If another service already uses the default host ports, change the HRMS host-port variables in `.env`.
+
+The HRMS Docker network and named volumes are isolated from unrelated projects through the Compose project configuration and volume naming.
 
 ---
 
-## Git Workflow & Branch Strategy
+## Development Principles
 
-- **`develop` / `main`**: Stable upstream and tracking branches.
-- **`hrms-portable-docker`**: Component development and Docker portability branch.
-- **Rules**:
-  - Never force-push or rewrite commit history.
-  - Development changes should be committed locally and verified before pushing.
-  - Updating team members only need to run `.\update.ps1` to pull changes, rebuild if Dockerfiles changed, and run safe migrations without wiping persistent database records.
+1. **Frappe/MariaDB remains the HRMS source of truth.**
+2. **Firebase is an authentication/identity layer, not the HRMS database.**
+3. **Provisioning is idempotent.**
+4. **External-service failures are represented as retryable state.**
+5. **Secrets are provided through local environment configuration.**
+6. **Persistent Docker volumes are preserved during normal lifecycle operations.**
+7. **Backups are treated separately from source code.**
+8. **Frappe roles and permissions remain authoritative for HRMS authorization.**
+9. **Employee Firebase actions require authenticated Frappe access and appropriate permissions.**
+10. **Production credentials and real employee data must never be committed to the repository.**
+
+---
+
+## Git Workflow
+
+The customized work is maintained on:
+
+```text
+hrms-development
+```
+
+Before pushing development changes:
+
+```powershell
+git status
+git diff
+git add .
+git commit -m "Describe the change"
+git push origin hrms-development
+```
+
+Do not force-push or rewrite shared development history.
+
+When updating an existing environment, prefer migrations and container recreation that preserve named volumes rather than destroying the database.
 
 ---
 
-## Troubleshooting & Diagnostics
+## Source Project
 
-1. **Port 8000 or 9000 already in use**:
-   Change `HRMS_WEB_PORT` or `HRMS_SOCKETIO_PORT` in `.env` to open ports (e.g., `8080` and `9090`), then run `.\restart.ps1`.
+This repository is derived from the open-source **Frappe HRMS** project.
 
-2. **Check live container health & records**:
+Upstream project:
 
-   ```powershell
-   .\status.ps1
-   ```
+https://github.com/frappe/hrms
 
-   Verifies MariaDB, Redis, Frappe ping, and live database user/employee counts.
+Frappe Framework:
 
-3. **Follow logs in realtime**:
+https://github.com/frappe/frappe
 
-   ```powershell
-   .\logs.ps1 -Follow
-   ```
+Frappe UI:
 
-4. **Accidental corrupted state or want a fresh start from seed**:
-   ```powershell
-   .\reset.ps1   # Destructive: prompts for confirmation before removing volumes
-   .\setup.ps1   # Automatically bootstraps fresh volumes and restores seed backup
-   ```
+https://github.com/frappe/frappe-ui
+
+Official Frappe HR documentation:
+
+https://docs.frappe.io/hr/introduction
+
+The upstream project remains the foundation; this branch contains project-specific Docker, authentication, provisioning, SMTP, frontend and development-environment changes.
 
 ---
+
+## Security Notes
+
+This is a development environment.
+
+Never commit:
+
+```text
+.env
+Firebase Admin service-account JSON
+Firebase private keys
+Gmail App Passwords
+SMTP passwords
+Real employee passwords
+Production database backups
+Private employee files
+```
+
+If a credential has ever been committed accidentally, rotate the credential instead of relying on deletion from the latest commit.
+
+For a public repository, test credentials should be documented as placeholders rather than real passwords.
+
+---
+
+## Current Status
+
+The customized development environment has been exercised through:
+
+- Docker bootstrap.
+- Persistent database/site storage.
+- Firebase Admin initialization.
+- Firebase token verification.
+- Frappe User mapping.
+- Employee provisioning.
+- Firebase UID persistence.
+- Firestore synchronization.
+- Gmail SMTP configuration.
+- Email Queue invitation handling.
+- Invitation resend.
+- Employee login.
+- Employee dashboard access.
+- Protected-route checks.
+- Logout/session invalidation.
+- Disabled-user rejection.
+- Retry and duplicate-prevention scenarios.
+
+The repository is intended to provide a reproducible development setup while preserving the standard Frappe HRMS architecture and permission model.
