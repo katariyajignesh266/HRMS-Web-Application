@@ -198,8 +198,8 @@ A dedicated Employee account was used during development to verify the Employee 
 For local testing, keep the credentials in your private `.env`, team documentation, password manager, or another private channel:
 
 ```text
-Employee email: <TEST_EMPLOYEE_EMAIL>
-Employee password: <TEST_EMPLOYEE_PASSWORD>
+Employee email: katariyajignesh266@gmail.com
+Employee password: jignesh&777J
 Role: Employee
 ```
 
